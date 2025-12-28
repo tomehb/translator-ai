@@ -224,7 +224,7 @@ Output:`;
       }
       
       // Extract JSON from the response
-      let translations: string[];
+      let translations: string[] = [];
       
       // First, try to extract just the JSON part from the response
       // Handle cases where LLM adds text before/after JSON
@@ -371,7 +371,7 @@ Output:`;
         }
       }
       
-      if (!translations!) {
+      if (!translations || translations.length === 0) {
         throw new Error(`Could not extract valid translations from response. Last error: ${lastError?.message}`);
       }
       

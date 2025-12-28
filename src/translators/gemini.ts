@@ -20,7 +20,6 @@ export class GeminiTranslator extends BaseTranslator {
         topK: 1,
         topP: 0.8,
         maxOutputTokens: 10000,
-        // @ts-ignore - responseMimeType is not in the type definitions yet
         responseMimeType: "application/json",
       },
       safetySettings: [

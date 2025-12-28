@@ -6,11 +6,51 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// Input validation to prevent path traversal and injection attacks
+function validateFilePath(filePath: string): string {
+  // Normalize the path to resolve .. and . segments
+  const normalized = path.normalize(filePath);
+
+  // Check for null bytes (injection attempt)
+  if (normalized.includes('\0')) {
+    throw new Error('Invalid file path: contains null bytes');
+  }
+
+  // Check for shell metacharacters that shouldn't be in file paths
+  const dangerousChars = /[;&|`$(){}[\]<>!]/;
+  if (dangerousChars.test(normalized)) {
+    throw new Error('Invalid file path: contains shell metacharacters');
+  }
+
+  return normalized;
+}
+
+function validateLanguageCode(lang: string): string {
+  // Language codes should be alphanumeric with optional hyphens (e.g., "en", "zh-TW", "pt-BR")
+  // Allow comma-separated for multiple languages
+  const validLangPattern = /^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?(,[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?)*$/;
+  if (!validLangPattern.test(lang)) {
+    throw new Error(`Invalid language code: ${lang}. Expected format: "es" or "es,fr,de"`);
+  }
+  return lang;
+}
+
+function validateContext(context: string | undefined): string | undefined {
+  if (!context) return undefined;
+
+  // Limit context length to prevent abuse
+  if (context.length > 1000) {
+    throw new Error('Context too long: maximum 1000 characters');
+  }
+
+  return context;
+}
 
 // Helper to get current provider and model configuration
 function getProviderInfo(): { provider: string; model: string } {
@@ -60,14 +100,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { provider, model } = getProviderInfo();
 
     try {
-      // Build the command with provider and model options
-      const geminiModel = process.env.GEMINI_MODEL ? `--gemini-model ${process.env.GEMINI_MODEL}` : '';
-      const openaiModel = process.env.OPENAI_MODEL ? `--openai-model ${process.env.OPENAI_MODEL}` : '';
-      const contextFlag = context ? `--context "${context.replace(/"/g, '\\"')}"` : '';
-      const cmd = `translator-ai "${inputFile}" -l ${targetLanguage} -o "${outputFile}" --provider ${provider} ${geminiModel} ${openaiModel} ${contextFlag}`.trim();
+      // Validate inputs to prevent injection attacks
+      const safeInputFile = validateFilePath(inputFile);
+      const safeOutputFile = validateFilePath(outputFile);
+      const safeTargetLang = validateLanguageCode(targetLanguage);
+      const safeContext = validateContext(context);
 
-      // Execute the command
-      const { stdout, stderr } = await execAsync(cmd, {
+      // Build argument array (safe from shell injection)
+      const cmdArgs: string[] = [
+        safeInputFile,
+        '-l', safeTargetLang,
+        '-o', safeOutputFile,
+        '--provider', provider
+      ];
+
+      if (process.env.GEMINI_MODEL) {
+        cmdArgs.push('--gemini-model', process.env.GEMINI_MODEL);
+      }
+      if (process.env.OPENAI_MODEL) {
+        cmdArgs.push('--openai-model', process.env.OPENAI_MODEL);
+      }
+      if (safeContext) {
+        cmdArgs.push('--context', safeContext);
+      }
+
+      // Execute with execFile (safe from shell injection)
+      const { stdout, stderr } = await execFileAsync('translator-ai', cmdArgs, {
         env: { ...process.env }
       });
 
@@ -105,15 +163,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { provider, model } = getProviderInfo();
 
     try {
-      // Build the command with provider and model options
-      const statsFlag = showStats ? "--stats" : "";
-      const geminiModel = process.env.GEMINI_MODEL ? `--gemini-model ${process.env.GEMINI_MODEL}` : '';
-      const openaiModel = process.env.OPENAI_MODEL ? `--openai-model ${process.env.OPENAI_MODEL}` : '';
-      const contextFlag = context ? `--context "${context.replace(/"/g, '\\"')}"` : '';
-      const cmd = `translator-ai ${pattern} -l ${targetLanguage} -o "${outputPattern}" ${statsFlag} --provider ${provider} ${geminiModel} ${openaiModel} ${contextFlag}`.trim();
+      // Validate inputs
+      const safePattern = validateFilePath(pattern);
+      const safeTargetLang = validateLanguageCode(targetLanguage);
+      const safeOutputPattern = validateFilePath(outputPattern);
+      const safeContext = validateContext(context);
 
-      // Execute the command
-      const { stdout, stderr } = await execAsync(cmd, {
+      // Build argument array (safe from shell injection)
+      const cmdArgs: string[] = [
+        safePattern,
+        '-l', safeTargetLang,
+        '-o', safeOutputPattern,
+        '--provider', provider
+      ];
+
+      if (showStats) {
+        cmdArgs.push('--stats');
+      }
+      if (process.env.GEMINI_MODEL) {
+        cmdArgs.push('--gemini-model', process.env.GEMINI_MODEL);
+      }
+      if (process.env.OPENAI_MODEL) {
+        cmdArgs.push('--openai-model', process.env.OPENAI_MODEL);
+      }
+      if (safeContext) {
+        cmdArgs.push('--context', safeContext);
+      }
+
+      // Execute with execFile (safe from shell injection)
+      const { stdout, stderr } = await execFileAsync('translator-ai', cmdArgs, {
         env: { ...process.env }
       });
 
@@ -147,12 +225,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { provider, model } = getProviderInfo();
 
     try {
-      const geminiModel = process.env.GEMINI_MODEL ? `--gemini-model ${process.env.GEMINI_MODEL}` : '';
-      const openaiModel = process.env.OPENAI_MODEL ? `--openai-model ${process.env.OPENAI_MODEL}` : '';
-      // Use dry-run with detect-source to just detect language without translating
-      const cmd = `translator-ai "${inputFile}" -l en -o /dev/null --detect-source --dry-run --provider ${provider} ${geminiModel} ${openaiModel}`.trim();
+      // Validate input
+      const safeInputFile = validateFilePath(inputFile);
 
-      const { stdout, stderr } = await execAsync(cmd, {
+      // Build argument array (safe from shell injection)
+      const cmdArgs: string[] = [
+        safeInputFile,
+        '-l', 'en',
+        '-o', '/dev/null',
+        '--detect-source',
+        '--dry-run',
+        '--provider', provider
+      ];
+
+      if (process.env.GEMINI_MODEL) {
+        cmdArgs.push('--gemini-model', process.env.GEMINI_MODEL);
+      }
+      if (process.env.OPENAI_MODEL) {
+        cmdArgs.push('--openai-model', process.env.OPENAI_MODEL);
+      }
+
+      // Execute with execFile (safe from shell injection)
+      const { stdout, stderr } = await execFileAsync('translator-ai', cmdArgs, {
         env: { ...process.env }
       });
 
@@ -190,11 +284,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
 
     try {
+      // Validate file paths
+      const safeSourceFile = validateFilePath(sourceFile);
+      const safeTranslatedFile = validateFilePath(translatedFile);
+
       // Read both files and compare keys
       const { promises: fs } = await import('fs');
 
-      const sourceContent = await fs.readFile(sourceFile, 'utf-8');
-      const translatedContent = await fs.readFile(translatedFile, 'utf-8');
+      const sourceContent = await fs.readFile(safeSourceFile, 'utf-8');
+      const translatedContent = await fs.readFile(safeTranslatedFile, 'utf-8');
 
       const sourceJson = JSON.parse(sourceContent);
       const translatedJson = JSON.parse(translatedContent);
@@ -263,32 +361,58 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { provider, model } = getProviderInfo();
 
     try {
+      // Validate inputs
+      const safeTargetLang = validateLanguageCode(targetLanguage);
+      const safeContext = validateContext(context);
+
+      // Validate text length
+      if (!text || text.length === 0) {
+        throw new Error('Text to translate cannot be empty');
+      }
+      if (text.length > 10000) {
+        throw new Error('Text too long: maximum 10000 characters');
+      }
+
       const { promises: fs } = await import('fs');
       const os = await import('os');
-      const path = await import('path');
+      const pathModule = await import('path');
 
       // Create temporary files
       const tempDir = os.tmpdir();
-      const tempInput = path.join(tempDir, `translator-ai-input-${Date.now()}.json`);
-      const tempOutput = path.join(tempDir, `translator-ai-output-${Date.now()}.json`);
+      const tempInput = pathModule.join(tempDir, `translator-ai-input-${Date.now()}.json`);
+      const tempOutput = pathModule.join(tempDir, `translator-ai-output-${Date.now()}.json`);
 
       // Write input as JSON
       await fs.writeFile(tempInput, JSON.stringify({ text }), 'utf-8');
 
-      const geminiModel = process.env.GEMINI_MODEL ? `--gemini-model ${process.env.GEMINI_MODEL}` : '';
-      const openaiModel = process.env.OPENAI_MODEL ? `--openai-model ${process.env.OPENAI_MODEL}` : '';
-      const contextFlag = context ? `--context "${context.replace(/"/g, '\\"')}"` : '';
-      const cmd = `translator-ai "${tempInput}" -l ${targetLanguage} -o "${tempOutput}" --provider ${provider} ${geminiModel} ${openaiModel} ${contextFlag}`.trim();
+      // Build argument array (safe from shell injection)
+      const cmdArgs: string[] = [
+        tempInput,
+        '-l', safeTargetLang,
+        '-o', tempOutput,
+        '--provider', provider
+      ];
 
-      await execAsync(cmd, { env: { ...process.env } });
+      if (process.env.GEMINI_MODEL) {
+        cmdArgs.push('--gemini-model', process.env.GEMINI_MODEL);
+      }
+      if (process.env.OPENAI_MODEL) {
+        cmdArgs.push('--openai-model', process.env.OPENAI_MODEL);
+      }
+      if (safeContext) {
+        cmdArgs.push('--context', safeContext);
+      }
+
+      // Execute with execFile (safe from shell injection)
+      await execFileAsync('translator-ai', cmdArgs, { env: { ...process.env } });
 
       // Read result
       const resultContent = await fs.readFile(tempOutput, 'utf-8');
       const resultJson = JSON.parse(resultContent);
 
-      // Cleanup
-      await fs.unlink(tempInput).catch(() => {});
-      await fs.unlink(tempOutput).catch(() => {});
+      // Cleanup with proper error logging
+      await fs.unlink(tempInput).catch((e) => console.error('Failed to cleanup temp input:', e.message));
+      await fs.unlink(tempOutput).catch((e) => console.error('Failed to cleanup temp output:', e.message));
 
       const translatedText = resultJson.text || resultJson;
       return {
