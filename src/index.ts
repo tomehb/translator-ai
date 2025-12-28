@@ -8,9 +8,9 @@ import ora, { Ora } from 'ora';
 import dotenv from 'dotenv';
 import { performance } from 'perf_hooks';
 import { glob } from 'glob';
-import { hashString, getCacheDirectory, getDefaultCacheFilePath, flattenObjectWithPaths, unflattenObject, JsonObject, JsonValue, preserveFormats, restoreFormats, PreservedFormat, sortObjectKeys, compareKeys } from './helpers';
-import { TranslatorFactory, TranslatorType } from './translators/factory';
-import { TranslationProvider } from './translators/base';
+import { hashString, getCacheDirectory, getDefaultCacheFilePath, flattenObjectWithPaths, unflattenObject, JsonObject, JsonValue, preserveFormats, restoreFormats, PreservedFormat, sortObjectKeys, compareKeys } from './helpers.js';
+import { TranslatorFactory, TranslatorType } from './translators/factory.js';
+import { TranslationProvider } from './translators/base.js';
 
 dotenv.config();
 
@@ -69,7 +69,7 @@ async function saveCache(cache: TranslationCache, cacheFilePath: string): Promis
   await fs.writeFile(cacheFilePath, JSON.stringify(cache, null, 2), 'utf-8');
 }
 
-async function translateBatch(strings: string[], targetLang: string, translator: TranslationProvider, sourceLang: string = 'English', shouldPreserveFormats: boolean = false): Promise<Map<string, string>> {
+async function translateBatch(strings: string[], targetLang: string, translator: TranslationProvider, sourceLang: string = 'English', shouldPreserveFormats: boolean = false, context?: string): Promise<Map<string, string>> {
   try {
     let processedStrings = strings;
     const formatMaps = new Map<string, PreservedFormat>();
@@ -83,7 +83,7 @@ async function translateBatch(strings: string[], targetLang: string, translator:
       });
     }
     
-    const translations = await translator.translate(processedStrings, targetLang, sourceLang);
+    const translations = await translator.translate(processedStrings, targetLang, sourceLang, context);
     const translationMap = new Map<string, string>();
     
     strings.forEach((original, index) => {
@@ -242,7 +242,8 @@ async function processSingleFile(
   preserveFormats: boolean = false,
   includeMetadata: boolean = false,
   sortKeys: boolean = false,
-  checkKeys: boolean = false
+  checkKeys: boolean = false,
+  context?: string
 ): Promise<void> {
   const t = { start: performance.now(), last: performance.now() };
   const stats: PerformanceStats = {
@@ -373,7 +374,7 @@ async function processSingleFile(
 
     const translationPromises = batches.map(async (batch, i) => {
       const batchStartTime = performance.now();
-      const result = await translateBatch(batch, lang, translator, sourceLang, preserveFormats);
+      const result = await translateBatch(batch, lang, translator, sourceLang, preserveFormats, context);
       stats.batchTimes[i] = performance.now() - batchStartTime;
       spinner.info(`Batch ${i + 1}/${batches.length} (${batch.length} strings) completed in ${stats.batchTimes[i].toFixed(2)}ms.`);
       return result;
@@ -556,7 +557,8 @@ async function processMultipleFiles(
   preserveFormats: boolean = false,
   includeMetadata: boolean = false,
   sortKeys: boolean = false,
-  checkKeys: boolean = false
+  checkKeys: boolean = false,
+  context?: string
 ): Promise<void> {
   const t = { start: performance.now(), last: performance.now() };
   const stats: MultiFileStats = {
@@ -781,9 +783,9 @@ async function processMultipleFiles(
       const batchStrings = stringsArray.slice(batchStart, batchEnd);
 
       spinner.text = `Translating batch ${i + 1}/${numBatches} (${batchStrings.length} strings)...`;
-      
+
       const batchStartTime = performance.now();
-      const batchTranslations = await translateBatch(batchStrings, lang, translator, sourceLang, preserveFormats);
+      const batchTranslations = await translateBatch(batchStrings, lang, translator, sourceLang, preserveFormats, context);
       stats.batchTimes.push(performance.now() - batchStartTime);
       
       batchTranslations.forEach((translated, original) => {
@@ -1013,15 +1015,16 @@ async function main() {
     .option('--metadata', 'Add translation metadata to output files (may break some i18n parsers)')
     .option('--sort-keys', 'Sort output JSON keys alphabetically')
     .option('--check-keys', 'Verify all source keys exist in output (exit with error if keys are missing)')
-    .option('--gemini-model <model>', 'Gemini model to use', 'gemini-2.0-flash-lite')
+    .option('--gemini-model <model>', 'Gemini model to use', 'gemini-3-flash-preview')
     .option('--openai-model <model>', 'OpenAI model to use', 'gpt-4o-mini')
+    .option('--context <instructions>', 'Custom translation context or instructions (e.g., "Adapt for Latin American Spanish" or "Use formal tone")')
     .parse(process.argv);
 
   const inputFiles = program.args;
-  const { 
+  const {
     lang, output, stdout, stats: showStats, cache, cacheFile,
     provider, ollamaUrl, ollamaModel, geminiModel, openaiModel, detectSource, dryRun, verbose, preserveFormats: shouldPreserveFormats,
-    metadata, sortKeys, checkKeys
+    metadata, sortKeys, checkKeys, context: translationContext
   } = program.opts();
 
   if (!output && !stdout) {
@@ -1072,9 +1075,9 @@ async function main() {
       }
       
       if (isSingleFile) {
-        await processSingleFile(inputFiles[0], targetLang, output, stdout, showStats, cache, cacheFile, translator, detectSource, dryRun, shouldPreserveFormats, metadata, sortKeys, checkKeys);
+        await processSingleFile(inputFiles[0], targetLang, output, stdout, showStats, cache, cacheFile, translator, detectSource, dryRun, shouldPreserveFormats, metadata, sortKeys, checkKeys, translationContext);
       } else {
-        await processMultipleFiles(inputFiles, targetLang, output, stdout, showStats, cache, cacheFile, translator, detectSource, dryRun, shouldPreserveFormats, metadata, sortKeys, checkKeys);
+        await processMultipleFiles(inputFiles, targetLang, output, stdout, showStats, cache, cacheFile, translator, detectSource, dryRun, shouldPreserveFormats, metadata, sortKeys, checkKeys, translationContext);
       }
     }
   } catch (error) {

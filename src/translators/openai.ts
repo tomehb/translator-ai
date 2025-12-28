@@ -1,4 +1,4 @@
-import { BaseTranslator } from './base';
+import { BaseTranslator } from './base.js';
 import fetch from 'node-fetch';
 
 interface OpenAIMessage {
@@ -27,11 +27,17 @@ export class OpenAITranslator extends BaseTranslator {
     this.baseUrl = 'https://api.openai.com/v1';
   }
   
-  async translate(strings: string[], targetLang: string, sourceLang: string = 'English'): Promise<string[]> {
+  async translate(strings: string[], targetLang: string, sourceLang: string = 'English', context?: string): Promise<string[]> {
+    // Use provided context or instance context
+    const translationContext = context || this.translationContext;
+    const contextInstructions = translationContext
+      ? `\n\nAdditional translation context and instructions:\n${translationContext}`
+      : '';
+
     const messages: OpenAIMessage[] = [
       {
         role: 'system',
-        content: `You are a professional translator. Translate text from ${sourceLang} to ${targetLang}. Return ONLY a JSON array with the translated strings in the exact same order. Maintain any placeholder patterns like {{variable}} or {0} unchanged. Do not add any explanation or additional text.`
+        content: `You are a professional translator. Translate text from ${sourceLang} to ${targetLang}. Return ONLY a JSON array with the translated strings in the exact same order. Maintain any placeholder patterns like {{variable}} or {0} unchanged. Do not add any explanation or additional text.${contextInstructions}`
       },
       {
         role: 'user',

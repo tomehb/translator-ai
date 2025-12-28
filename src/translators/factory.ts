@@ -1,7 +1,7 @@
-import { TranslationProvider } from './base';
-import { GeminiTranslator } from './gemini';
-import { OllamaTranslator } from './ollama';
-import { OpenAITranslator } from './openai';
+import { TranslationProvider } from './base.js';
+import { GeminiTranslator } from './gemini.js';
+import { OllamaTranslator } from './ollama.js';
+import { OpenAITranslator } from './openai.js';
 
 export type TranslatorType = 'gemini' | 'ollama' | 'openai';
 

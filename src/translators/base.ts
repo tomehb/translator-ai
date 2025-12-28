@@ -1,20 +1,27 @@
 export interface TranslationProvider {
   name: string;
-  translate(strings: string[], targetLang: string, sourceLang?: string): Promise<string[]>;
+  translate(strings: string[], targetLang: string, sourceLang?: string, context?: string): Promise<string[]>;
   detectLanguage?(strings: string[]): Promise<string>;
   isAvailable(): Promise<boolean>;
+  setContext?(context: string): void;
 }
 
 export interface TranslationOptions {
   targetLanguage: string;
   batchSize?: number;
   timeout?: number;
+  context?: string;
 }
 
 export abstract class BaseTranslator implements TranslationProvider {
   abstract name: string;
-  
-  abstract translate(strings: string[], targetLang: string, sourceLang?: string): Promise<string[]>;
+  protected translationContext?: string;
+
+  setContext(context: string): void {
+    this.translationContext = context;
+  }
+
+  abstract translate(strings: string[], targetLang: string, sourceLang?: string, context?: string): Promise<string[]>;
   
   abstract isAvailable(): Promise<boolean>;
   

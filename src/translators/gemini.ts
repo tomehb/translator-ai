@@ -1,19 +1,19 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
-import { BaseTranslator } from './base';
+import { BaseTranslator } from './base.js';
 
 export class GeminiTranslator extends BaseTranslator {
   name = 'Google Gemini';
   private genAI: GoogleGenerativeAI;
   private modelName: string;
   
-  constructor(apiKey: string, modelName: string = 'gemini-2.0-flash-lite') {
+  constructor(apiKey: string, modelName: string = 'gemini-3-flash-preview') {
     super();
     this.genAI = new GoogleGenerativeAI(apiKey);
     this.modelName = modelName;
   }
   
-  async translate(strings: string[], targetLang: string, sourceLang: string = 'English'): Promise<string[]> {
-    const model = this.genAI.getGenerativeModel({ 
+  async translate(strings: string[], targetLang: string, sourceLang: string = 'English', context?: string): Promise<string[]> {
+    const model = this.genAI.getGenerativeModel({
       model: this.modelName,
       generationConfig: {
         temperature: 0.1,
@@ -42,11 +42,17 @@ export class GeminiTranslator extends BaseTranslator {
         },
       ],
     });
-    
+
+    // Use provided context or instance context
+    const translationContext = context || this.translationContext;
+    const contextInstructions = translationContext
+      ? `\n\nAdditional translation context and instructions:\n${translationContext}\n`
+      : '';
+
     const prompt = `Translate the following ${strings.length} strings from ${sourceLang} to ${targetLang} language.
 Return ONLY a JSON array with the translated strings in the exact same order.
 Maintain any placeholder patterns like {{variable}} or {0} unchanged.
-Do not add any explanation or additional text.
+Do not add any explanation or additional text.${contextInstructions}
 
 Strings to translate:
 ${JSON.stringify(strings, null, 2)}`;

@@ -1,4 +1,4 @@
-import { BaseTranslator } from './base';
+import { BaseTranslator } from './base.js';
 import fetch from 'node-fetch';
 
 export interface OllamaConfig {
@@ -23,16 +23,16 @@ export class OllamaTranslator extends BaseTranslator {
     this.timeout = config.timeout || 60000; // 60 seconds default
   }
   
-  async translate(strings: string[], targetLang: string, sourceLang: string = 'English'): Promise<string[]> {
+  async translate(strings: string[], targetLang: string, sourceLang: string = 'English', context?: string): Promise<string[]> {
     let lastError: Error | null = null;
-    
+
     // Reset flags at the start
     this.useJsonFormat = true;
     this.useSimplifiedPrompt = false;
-    
+
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        const result = await this.attemptTranslation(strings, targetLang, sourceLang);
+        const result = await this.attemptTranslation(strings, targetLang, sourceLang, context);
         return result;
       } catch (error: any) {
         lastError = error;
@@ -107,21 +107,30 @@ export class OllamaTranslator extends BaseTranslator {
     }
   }
   
-  private async attemptTranslation(strings: string[], targetLang: string, sourceLang: string = 'English'): Promise<string[]> {
+  private async attemptTranslation(strings: string[], targetLang: string, sourceLang: string = 'English', context?: string): Promise<string[]> {
     // For DeepSeek-R1, we need to format the prompt in their expected format
     const isDeepSeek = this.model.includes('deepseek');
-    
+
+    // Use provided context or instance context
+    const translationContext = context || this.translationContext;
+    const contextInstructions = translationContext
+      ? `\n\nAdditional translation context and instructions:\n${translationContext}\n`
+      : '';
+
     // Add verbose logging
     if (process.env.OLLAMA_VERBOSE === 'true' || process.argv.includes('--verbose')) {
       console.error(`[Ollama] Model: ${this.model}`);
       console.error(`[Ollama] Target language: ${targetLang}`);
       console.error(`[Ollama] Strings to translate: ${JSON.stringify(strings)}`);
+      if (translationContext) {
+        console.error(`[Ollama] Context: ${translationContext}`);
+      }
     }
-    
+
     let prompt: string;
     if (this.useSimplifiedPrompt) {
       // Simplified prompt for retries
-      prompt = `Translate from ${sourceLang} to ${targetLang}:\n${JSON.stringify(strings)}\n\nReturn JSON array with translations.`;
+      prompt = `Translate from ${sourceLang} to ${targetLang}:\n${JSON.stringify(strings)}\n\nReturn JSON array with translations.${contextInstructions}`;
     } else if (isDeepSeek) {
       // DeepSeek format with more flexible instructions
       prompt = `<｜User｜>Translate these ${strings.length} strings from ${sourceLang} to ${targetLang}.
@@ -130,7 +139,7 @@ Return a JSON response with the translations. You can return either:
 - A JSON array with ${strings.length} translated strings in order
 - A JSON object mapping each original string to its translation
 
-Preserve ALL placeholders unchanged (like {{var}}, {0}, %s, etc.)
+Preserve ALL placeholders unchanged (like {{var}}, {0}, %s, etc.)${contextInstructions}
 
 Input to translate:
 ${JSON.stringify(strings, null, 2)}
@@ -144,7 +153,7 @@ Rules:
 2. Keep the exact same order as the input
 3. Preserve any placeholder patterns like {{variable}}, {0}, %s, etc.
 4. Do not include any explanations, markdown formatting, or additional text
-5. The output must be valid JSON that can be parsed
+5. The output must be valid JSON that can be parsed${contextInstructions}
 
 Input strings:
 ${JSON.stringify(strings, null, 2)}
