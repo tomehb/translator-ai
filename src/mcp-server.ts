@@ -116,6 +116,176 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   }
   
+  if (name === "detect_language") {
+    const { inputFile } = args as {
+      inputFile: string;
+    };
+
+    try {
+      const provider = process.env.TRANSLATOR_PROVIDER || 'gemini';
+      const geminiModel = process.env.GEMINI_MODEL ? `--gemini-model ${process.env.GEMINI_MODEL}` : '';
+      const openaiModel = process.env.OPENAI_MODEL ? `--openai-model ${process.env.OPENAI_MODEL}` : '';
+      // Use dry-run with detect-source to just detect language without translating
+      const cmd = `translator-ai "${inputFile}" -l en -o /dev/null --detect-source --dry-run --provider ${provider} ${geminiModel} ${openaiModel}`.trim();
+
+      const { stdout, stderr } = await execAsync(cmd, {
+        env: { ...process.env }
+      });
+
+      // Parse the detected language from output
+      const output = stdout + stderr;
+      const langMatch = output.match(/Detected source language:\s*(.+)/i) ||
+                        output.match(/Source language:\s*(.+)/i);
+      const detectedLang = langMatch ? langMatch[1].trim() : 'Unknown';
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Detected language: ${detectedLang}`
+          }
+        ]
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error detecting language: ${error.message}\n${error.stderr || ''}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+
+  if (name === "validate_translation") {
+    const { sourceFile, translatedFile } = args as {
+      sourceFile: string;
+      translatedFile: string;
+    };
+
+    try {
+      // Read both files and compare keys
+      const { promises: fs } = await import('fs');
+
+      const sourceContent = await fs.readFile(sourceFile, 'utf-8');
+      const translatedContent = await fs.readFile(translatedFile, 'utf-8');
+
+      const sourceJson = JSON.parse(sourceContent);
+      const translatedJson = JSON.parse(translatedContent);
+
+      // Flatten and compare keys
+      const getKeys = (obj: any, prefix = ''): string[] => {
+        const keys: string[] = [];
+        for (const key in obj) {
+          const fullKey = prefix ? `${prefix}.${key}` : key;
+          if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+            keys.push(...getKeys(obj[key], fullKey));
+          } else {
+            keys.push(fullKey);
+          }
+        }
+        return keys;
+      };
+
+      const sourceKeys = new Set(getKeys(sourceJson));
+      const translatedKeys = new Set(getKeys(translatedJson));
+
+      const missingKeys = [...sourceKeys].filter(k => !translatedKeys.has(k) && !k.startsWith('_translator_metadata'));
+      const extraKeys = [...translatedKeys].filter(k => !sourceKeys.has(k) && !k.startsWith('_translator_metadata'));
+
+      const isValid = missingKeys.length === 0;
+
+      let result = `Validation ${isValid ? 'PASSED ✓' : 'FAILED ✗'}\n`;
+      result += `Source keys: ${sourceKeys.size}\n`;
+      result += `Translated keys: ${translatedKeys.size}\n`;
+
+      if (missingKeys.length > 0) {
+        result += `\nMissing keys (${missingKeys.length}):\n${missingKeys.map(k => `  - ${k}`).join('\n')}`;
+      }
+      if (extraKeys.length > 0) {
+        result += `\nExtra keys (${extraKeys.length}):\n${extraKeys.map(k => `  + ${k}`).join('\n')}`;
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result
+          }
+        ]
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error validating translation: ${error.message}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+
+  if (name === "translate_string") {
+    const { text, targetLanguage, context } = args as {
+      text: string;
+      targetLanguage: string;
+      context?: string;
+    };
+
+    try {
+      const { promises: fs } = await import('fs');
+      const os = await import('os');
+      const path = await import('path');
+
+      // Create temporary files
+      const tempDir = os.tmpdir();
+      const tempInput = path.join(tempDir, `translator-ai-input-${Date.now()}.json`);
+      const tempOutput = path.join(tempDir, `translator-ai-output-${Date.now()}.json`);
+
+      // Write input as JSON
+      await fs.writeFile(tempInput, JSON.stringify({ text }), 'utf-8');
+
+      const provider = process.env.TRANSLATOR_PROVIDER || 'gemini';
+      const geminiModel = process.env.GEMINI_MODEL ? `--gemini-model ${process.env.GEMINI_MODEL}` : '';
+      const openaiModel = process.env.OPENAI_MODEL ? `--openai-model ${process.env.OPENAI_MODEL}` : '';
+      const contextFlag = context ? `--context "${context.replace(/"/g, '\\"')}"` : '';
+      const cmd = `translator-ai "${tempInput}" -l ${targetLanguage} -o "${tempOutput}" --provider ${provider} ${geminiModel} ${openaiModel} ${contextFlag}`.trim();
+
+      await execAsync(cmd, { env: { ...process.env } });
+
+      // Read result
+      const resultContent = await fs.readFile(tempOutput, 'utf-8');
+      const resultJson = JSON.parse(resultContent);
+
+      // Cleanup
+      await fs.unlink(tempInput).catch(() => {});
+      await fs.unlink(tempOutput).catch(() => {});
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: resultJson.text || resultJson
+          }
+        ]
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error translating string: ${error.message}\n${error.stderr || ''}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+
   // Unknown tool
   return {
     content: [
@@ -187,6 +357,60 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           },
           required: ["pattern", "targetLanguage", "outputPattern"]
+        }
+      },
+      {
+        name: "detect_language",
+        description: "Detect the language of a JSON i18n file. Useful for verifying source language before translation or for unknown files.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            inputFile: {
+              type: "string",
+              description: "Path to the JSON file to analyze"
+            }
+          },
+          required: ["inputFile"]
+        }
+      },
+      {
+        name: "validate_translation",
+        description: "Validate that a translated file contains all keys from the source file. Useful for CI/CD pipelines to ensure translation completeness.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sourceFile: {
+              type: "string",
+              description: "Path to the original source JSON file"
+            },
+            translatedFile: {
+              type: "string",
+              description: "Path to the translated JSON file to validate"
+            }
+          },
+          required: ["sourceFile", "translatedFile"]
+        }
+      },
+      {
+        name: "translate_string",
+        description: "Translate a single text string. Useful for ad-hoc translations or dynamic content that isn't in a JSON file.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              description: "The text string to translate"
+            },
+            targetLanguage: {
+              type: "string",
+              description: "Target language code (e.g., 'es', 'fr', 'de', 'ja')"
+            },
+            context: {
+              type: "string",
+              description: "Optional translation context (e.g., 'Formal business email' or 'Casual chat message')"
+            }
+          },
+          required: ["text", "targetLanguage"]
         }
       }
     ]

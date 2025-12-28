@@ -1,8 +1,18 @@
 # translator-ai
 
+> **⚠️ Fork Notice**: This is a fork of [DatanoiseTV/translator-ai](https://github.com/DatanoiseTV/translator-ai) with AI-assisted enhancements. Please support the original developer!
+
 [![CI](https://github.com/DatanoiseTV/translator-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/DatanoiseTV/translator-ai/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/translator-ai.svg)](https://www.npmjs.com/package/translator-ai)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?style=flat-square&logo=buy-me-a-coffee)](https://coff.ee/datanoisetv)
+
+### ☕ Support the Original Developer
+
+If you find this tool useful, please consider supporting the original creator:
+
+**[Buy DatanoiseTV a Coffee](https://coff.ee/datanoisetv)** ← Your support helps maintain and improve this project!
+
+---
 
 AI-powered JSON i18n translation with MCP (Model Context Protocol) integration. Translate your localization files using Google Gemini, OpenAI, or local Ollama models - directly from Claude Desktop, VS Code, or any MCP-compatible client.
 
@@ -192,6 +202,54 @@ With cultural context:
   "targetLanguage": "zh-TW",
   "outputPattern": "locales/zh-TW/{name}.json",
   "context": "Traditional Chinese for Taiwan market. Use polite honorifics."
+}
+```
+
+### detect_language
+
+Detect the source language of a JSON i18n file. Useful for verifying source language before translation or for unknown files.
+
+**Parameters:**
+- `inputFile` (required): Path to the JSON file to analyze
+
+**Example:**
+```json
+{
+  "inputFile": "locales/unknown.json"
+}
+```
+
+### validate_translation
+
+Validate that a translated file contains all keys from the source file. Useful for CI/CD pipelines to ensure translation completeness.
+
+**Parameters:**
+- `sourceFile` (required): Path to the original source JSON file
+- `translatedFile` (required): Path to the translated JSON file to validate
+
+**Example:**
+```json
+{
+  "sourceFile": "locales/en.json",
+  "translatedFile": "locales/es.json"
+}
+```
+
+### translate_string
+
+Translate a single text string without needing a JSON file. Useful for ad-hoc translations or dynamic content.
+
+**Parameters:**
+- `text` (required): The text string to translate
+- `targetLanguage` (required): Target language code (e.g., `es`, `fr`, `de`, `ja`)
+- `context` (optional): Translation context (e.g., "Formal business email" or "Casual chat message")
+
+**Example:**
+```json
+{
+  "text": "Welcome to our application!",
+  "targetLanguage": "ja",
+  "context": "Formal business greeting"
 }
 ```
 
