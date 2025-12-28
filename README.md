@@ -410,7 +410,19 @@ git clone https://github.com/DatanoiseTV/translator-ai.git
 cd translator-ai
 npm install
 npm run build
-npm start -- test.json -l es -o output.json
+npm link  # Required: Makes 'translator-ai' command available globally for MCP server
+```
+
+After running `npm link`, the `translator-ai` CLI will be available system-wide. This is **required** for the MCP server to work, as it internally calls the CLI command.
+
+**Test CLI directly:**
+```bash
+translator-ai test.json -l es -o output.json
+```
+
+**Verify installation:**
+```bash
+translator-ai --version
 ```
 
 ## License
