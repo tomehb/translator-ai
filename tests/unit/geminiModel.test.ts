@@ -5,7 +5,7 @@ describe('Gemini Model Selection', () => {
   describe('GeminiTranslator', () => {
     it('should use default model when not specified', () => {
       const translator = new GeminiTranslator('test-api-key');
-      expect((translator as any).modelName).toBe('gemini-2.0-flash-lite');
+      expect((translator as any).modelName).toBe('gemini-3-flash-preview');
     });
 
     it('should use custom model when specified', () => {
@@ -65,7 +65,7 @@ describe('Gemini Model Selection', () => {
       });
       
       expect(translator.name).toBe('Google Gemini');
-      expect((translator as any).modelName).toBe('gemini-2.0-flash-lite');
+      expect((translator as any).modelName).toBe('gemini-3-flash-preview');
     });
   });
 

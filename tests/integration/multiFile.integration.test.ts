@@ -35,8 +35,8 @@ describe('Multi-File Integration Tests', () => {
     const { stdout, stderr } = await execAsync(cmd);
     
     // Check that deduplication message appears
-    expect(stdout).toContain('Deduplication saved');
-    expect(stdout).toContain('API calls');
+    expect(stdout).toContain('Deduplication savings');
+    expect(stdout).toContain('Batches Sent to API');
     
     // Check that files were created
     const file1Exists = await fs.access(path.join(outputDir, 'file1.es.json')).then(() => true).catch(() => false);
@@ -63,8 +63,8 @@ describe('Multi-File Integration Tests', () => {
     
     const { stdout, stderr } = await execAsync(cmd);
     
-    // Should process multiple files
-    expect(stdout).toContain('Processing');
+    // Should process files with translation provider
+    expect(stdout).toContain('Using translation provider');
     
     // Check that files were created with glob pattern
     const files = await fs.readdir(outputDir);

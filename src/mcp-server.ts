@@ -12,20 +12,15 @@ import path from 'path';
 
 const execFileAsync = promisify(execFile);
 
-// Input validation to prevent path traversal and injection attacks
+// Input validation to prevent injection attacks
+// Note: Since we use execFile (not exec), shell metacharacters are safe - no shell interprets them
 function validateFilePath(filePath: string): string {
   // Normalize the path to resolve .. and . segments
   const normalized = path.normalize(filePath);
 
-  // Check for null bytes (injection attempt)
+  // Check for null bytes (injection attempt that can cause issues in C-based file operations)
   if (normalized.includes('\0')) {
     throw new Error('Invalid file path: contains null bytes');
-  }
-
-  // Check for shell metacharacters that shouldn't be in file paths
-  const dangerousChars = /[;&|`$(){}[\]<>!]/;
-  if (dangerousChars.test(normalized)) {
-    throw new Error('Invalid file path: contains shell metacharacters');
   }
 
   return normalized;
