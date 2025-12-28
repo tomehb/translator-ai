@@ -12,6 +12,27 @@ import path from 'path';
 
 const execAsync = promisify(exec);
 
+// Helper to get current provider and model configuration
+function getProviderInfo(): { provider: string; model: string } {
+  const provider = process.env.TRANSLATOR_PROVIDER || 'gemini';
+  let model: string;
+
+  switch (provider) {
+    case 'openai':
+      model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+      break;
+    case 'ollama':
+      model = process.env.OLLAMA_MODEL || 'deepseek-r1:latest';
+      break;
+    case 'gemini':
+    default:
+      model = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+      break;
+  }
+
+  return { provider, model };
+}
+
 const server = new Server(
   {
     name: "translator-ai",
@@ -36,25 +57,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       context?: string;
     };
 
+    const { provider, model } = getProviderInfo();
+
     try {
       // Build the command with provider and model options
-      const provider = process.env.TRANSLATOR_PROVIDER || 'gemini';
       const geminiModel = process.env.GEMINI_MODEL ? `--gemini-model ${process.env.GEMINI_MODEL}` : '';
       const openaiModel = process.env.OPENAI_MODEL ? `--openai-model ${process.env.OPENAI_MODEL}` : '';
       const contextFlag = context ? `--context "${context.replace(/"/g, '\\"')}"` : '';
       const cmd = `translator-ai "${inputFile}" -l ${targetLanguage} -o "${outputFile}" --provider ${provider} ${geminiModel} ${openaiModel} ${contextFlag}`.trim();
-      
+
       // Execute the command
       const { stdout, stderr } = await execAsync(cmd, {
         env: { ...process.env }
       });
-      
-      // Return success result
+
+      // Return success result with provider info
       return {
         content: [
           {
             type: "text",
-            text: `Successfully translated ${inputFile} to ${targetLanguage}\nOutput saved to: ${outputFile}\n${stdout}`
+            text: `✅ Successfully translated ${inputFile} to ${targetLanguage}\n📁 Output saved to: ${outputFile}\n🤖 Provider: ${provider} | Model: ${model}\n${stdout}`
           }
         ]
       };
@@ -63,14 +85,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `Error translating file: ${error.message}\n${error.stderr || ''}`
+            text: `❌ Error translating file: ${error.message}\n🤖 Provider: ${provider} | Model: ${model}\n${error.stderr || ''}`
           }
         ],
         isError: true
       };
     }
   }
-  
+
   if (name === "translate_multiple") {
     const { pattern, targetLanguage, outputPattern, showStats = false, context } = args as {
       pattern: string;
@@ -80,26 +102,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       context?: string;
     };
 
+    const { provider, model } = getProviderInfo();
+
     try {
       // Build the command with provider and model options
       const statsFlag = showStats ? "--stats" : "";
-      const provider = process.env.TRANSLATOR_PROVIDER || 'gemini';
       const geminiModel = process.env.GEMINI_MODEL ? `--gemini-model ${process.env.GEMINI_MODEL}` : '';
       const openaiModel = process.env.OPENAI_MODEL ? `--openai-model ${process.env.OPENAI_MODEL}` : '';
       const contextFlag = context ? `--context "${context.replace(/"/g, '\\"')}"` : '';
       const cmd = `translator-ai ${pattern} -l ${targetLanguage} -o "${outputPattern}" ${statsFlag} --provider ${provider} ${geminiModel} ${openaiModel} ${contextFlag}`.trim();
-      
+
       // Execute the command
       const { stdout, stderr } = await execAsync(cmd, {
         env: { ...process.env }
       });
-      
-      // Return success result
+
+      // Return success result with provider info
       return {
         content: [
           {
             type: "text",
-            text: stdout
+            text: `🤖 Provider: ${provider} | Model: ${model}\n${stdout}`
           }
         ]
       };
@@ -108,21 +131,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `Error translating files: ${error.message}\n${error.stderr || ''}`
+            text: `❌ Error translating files: ${error.message}\n🤖 Provider: ${provider} | Model: ${model}\n${error.stderr || ''}`
           }
         ],
         isError: true
       };
     }
   }
-  
+
   if (name === "detect_language") {
     const { inputFile } = args as {
       inputFile: string;
     };
 
+    const { provider, model } = getProviderInfo();
+
     try {
-      const provider = process.env.TRANSLATOR_PROVIDER || 'gemini';
       const geminiModel = process.env.GEMINI_MODEL ? `--gemini-model ${process.env.GEMINI_MODEL}` : '';
       const openaiModel = process.env.OPENAI_MODEL ? `--openai-model ${process.env.OPENAI_MODEL}` : '';
       // Use dry-run with detect-source to just detect language without translating
@@ -142,7 +166,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `Detected language: ${detectedLang}`
+            text: `🌐 Detected language: ${detectedLang}\n🤖 Provider: ${provider} | Model: ${model}`
           }
         ]
       };
@@ -151,7 +175,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `Error detecting language: ${error.message}\n${error.stderr || ''}`
+            text: `❌ Error detecting language: ${error.message}\n🤖 Provider: ${provider} | Model: ${model}\n${error.stderr || ''}`
           }
         ],
         isError: true
@@ -236,6 +260,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       context?: string;
     };
 
+    const { provider, model } = getProviderInfo();
+
     try {
       const { promises: fs } = await import('fs');
       const os = await import('os');
@@ -249,7 +275,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Write input as JSON
       await fs.writeFile(tempInput, JSON.stringify({ text }), 'utf-8');
 
-      const provider = process.env.TRANSLATOR_PROVIDER || 'gemini';
       const geminiModel = process.env.GEMINI_MODEL ? `--gemini-model ${process.env.GEMINI_MODEL}` : '';
       const openaiModel = process.env.OPENAI_MODEL ? `--openai-model ${process.env.OPENAI_MODEL}` : '';
       const contextFlag = context ? `--context "${context.replace(/"/g, '\\"')}"` : '';
@@ -265,11 +290,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       await fs.unlink(tempInput).catch(() => {});
       await fs.unlink(tempOutput).catch(() => {});
 
+      const translatedText = resultJson.text || resultJson;
       return {
         content: [
           {
             type: "text",
-            text: resultJson.text || resultJson
+            text: `${translatedText}\n\n🤖 Provider: ${provider} | Model: ${model}`
           }
         ]
       };
@@ -278,7 +304,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `Error translating string: ${error.message}\n${error.stderr || ''}`
+            text: `❌ Error translating string: ${error.message}\n🤖 Provider: ${provider} | Model: ${model}\n${error.stderr || ''}`
           }
         ],
         isError: true
